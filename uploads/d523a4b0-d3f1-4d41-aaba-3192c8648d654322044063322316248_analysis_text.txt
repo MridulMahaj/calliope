@@ -1,0 +1,36 @@
+{
+    "extracted text": "Updated UI design with OTP",
+    "scores": {
+        "U": 90,
+        "p": 80,
+        "d": 85,
+        "a": 75,
+        "t": 70,
+        "e": 65,
+        "I": 88,
+        "s": 78,
+        "g": 82,
+        "n": 83,
+        "w": 74,
+        "i": 81,
+        "h": 76,
+        "O": 92,
+        "T": 87,
+        "P": 79
+    },
+    "top_5": [
+        "O",
+        "U",
+        "I",
+        "d",
+        "T"
+    ],
+    "bottom_5": [
+        "e",
+        "t",
+        "w",
+        "a",
+        "h"
+    ],
+    "feedback": "The handwriting is generally clear with consistent stroke for 'O', 'U', and 'I'. Letters 'e', 't', and 'w' show variability in slant and spacing, which may affect overall readability. Improving these aspects can enhance the clarity."
+}

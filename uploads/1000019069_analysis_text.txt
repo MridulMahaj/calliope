@@ -1,0 +1,43 @@
+{
+    "extracted text": "DEPARTMENT OF COMPUTER SCIENCE PRESENTS CUCS MUN SOCIETY Join the CUCS Debating Society Where Scientific Minds Meet Global Solutions! REGISTER NOW! For any queries, contact: Bhavya - 8431891748 Dia Hanson - 9060330965 SCHOOL OF SCIENCES",
+    "scores": {
+        "A": 85,
+        "B": 87,
+        "C": 90,
+        "D": 88,
+        "E": 89,
+        "F": 82,
+        "G": 84,
+        "H": 86,
+        "I": 88,
+        "J": 85,
+        "L": 83,
+        "M": 89,
+        "N": 90,
+        "O": 87,
+        "P": 88,
+        "Q": 80,
+        "R": 84,
+        "S": 91,
+        "T": 82,
+        "U": 88,
+        "V": 83,
+        "W": 86,
+        "Y": 85
+    },
+    "top_5": [
+        "S",
+        "C",
+        "N",
+        "M",
+        "E"
+    ],
+    "bottom_5": [
+        "Q",
+        "F",
+        "T",
+        "L",
+        "V"
+    ],
+    "feedback": "The handwriting is generally very clear with good consistency in letter formation. The letters S and C are particularly well-formed and consistent, while Q and F show some variation in stroke and curvature."
+}

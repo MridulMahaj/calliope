@@ -1,0 +1,46 @@
+{
+    "extracted text": "The quick brown fox jumps over a lazy dog",
+    "scores": {
+        "A": 85,
+        "B": 90,
+        "C": 88,
+        "D": 87,
+        "E": 82,
+        "F": 75,
+        "G": 89,
+        "H": 80,
+        "I": 83,
+        "J": 70,
+        "K": 78,
+        "L": 91,
+        "M": 92,
+        "N": 84,
+        "O": 86,
+        "P": 77,
+        "Q": 95,
+        "R": 93,
+        "S": 88,
+        "T": 79,
+        "U": 76,
+        "V": 81,
+        "W": 94,
+        "X": 72,
+        "Y": 80,
+        "Z": 74
+    },
+    "top_5": [
+        "Q",
+        "W",
+        "R",
+        "M",
+        "B"
+    ],
+    "bottom_5": [
+        "J",
+        "X",
+        "Z",
+        "U",
+        "P"
+    ],
+    "feedback": "The handwriting shows good overall clarity and consistency. Letters like Q, W, and R are particularly well-formed. However, letters such as J, X, and Z could use a bit more precision. The size and spacing are mostly uniform, contributing to the overall readability."
+}

@@ -1,0 +1,33 @@
+{
+    "extracted text": "WORLD WILDLIFE DAY 3 MARCH",
+    "scores": {
+        "W": 90,
+        "O": 88,
+        "R": 87,
+        "L": 85,
+        "D": 84,
+        "I": 83,
+        "F": 82,
+        "E": 81,
+        "A": 80,
+        "Y": 79,
+        "M": 78,
+        "C": 77,
+        "H": 76
+    },
+    "top_5": [
+        "W",
+        "O",
+        "R",
+        "L",
+        "D"
+    ],
+    "bottom_5": [
+        "Y",
+        "M",
+        "C",
+        "H",
+        "A"
+    ],
+    "feedback": "The handwriting is clear and consistent, particularly for the letters 'W', 'O', and 'R'. However, the letters 'Y', 'M', and 'C' could use improvement in terms of clarity and form."
+}

@@ -1,0 +1,46 @@
+{
+    "extracted text": "Synonymy: has been considered as a synonym of H. brooki, but revalidated by MAHONY 2011.",
+    "scores": {
+        "S": 85,
+        "y": 88,
+        "n": 87,
+        "o": 89,
+        "m": 92,
+        "h": 90,
+        "a": 91,
+        "s": 93,
+        "b": 86,
+        "e": 84,
+        "c": 83,
+        "i": 80,
+        "d": 81,
+        "H": 82,
+        "r": 79,
+        "k": 78,
+        "u": 77,
+        "t": 76,
+        "l": 75,
+        "v": 74,
+        "M": 73,
+        "A": 72,
+        "N": 71,
+        "0": 70,
+        "2": 69,
+        ".": 68
+    },
+    "top_5": [
+        "s",
+        "m",
+        "a",
+        "h",
+        "o"
+    ],
+    "bottom_5": [
+        "2",
+        "0",
+        ".",
+        "M",
+        "A"
+    ],
+    "feedback": "The handwriting shows good clarity and consistency in most letters, especially vowels. However, the numerals and certain upper-case letters such as 'M' and 'A' are less distinct, impacting overall readability."
+}

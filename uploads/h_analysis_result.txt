@@ -1,0 +1,74 @@
+{
+    "extracted_text": "Comment Synonymy:has been considered as a synonym of H brooki, but revalidated by MAHONY 2011.",
+    "character_count": 80,
+    "word_count": 15,
+    "bounding_boxes": [
+        [
+            [
+                [
+                    36.0,
+                    16.0
+                ],
+                [
+                    90.0,
+                    16.0
+                ],
+                [
+                    90.0,
+                    28.0
+                ],
+                [
+                    36.0,
+                    28.0
+                ]
+            ],
+            "Comment",
+            0.9938451051712036
+        ],
+        [
+            [
+                [
+                    122.0,
+                    20.0
+                ],
+                [
+                    677.0,
+                    19.0
+                ],
+                [
+                    677.0,
+                    41.0
+                ],
+                [
+                    122.0,
+                    42.0
+                ]
+            ],
+            "Synonymy:has been considered as a synonym of H",
+            0.9560680985450745
+        ],
+        [
+            [
+                [
+                    121.0,
+                    51.0
+                ],
+                [
+                    565.0,
+                    50.0
+                ],
+                [
+                    565.0,
+                    71.0
+                ],
+                [
+                    121.0,
+                    72.0
+                ]
+            ],
+            "brooki, but revalidated by MAHONY 2011.",
+            0.909722626209259
+        ]
+    ],
+    "highlighted_image": "C:\\Users\\coolw\\PycharmProjects\\calliope\\uploads\\h_highlighted.jpg"
+}

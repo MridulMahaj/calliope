@@ -1,0 +1,37 @@
+{
+    "extracted_text": "Beit PRANAVZ Co SRINVAXEM",
+    "scores": {
+        "B": 92,
+        "E": 88,
+        "I": 85,
+        "T": 90,
+        "P": 87,
+        "R": 90,
+        "A": 95,
+        "N": 89,
+        "V": 82,
+        "Z": 80,
+        "C": 86,
+        "O": 91,
+        "S": 83,
+        "M": 84,
+        "X": 78
+    },
+    "top_5": [
+        "A",
+        "B",
+        "T",
+        "R",
+        "O"
+    ],
+    "bottom_5": [
+        "Z",
+        "V",
+        "X",
+        "S",
+        "M"
+    ],
+    "character_count": 22,
+    "word_count": 4,
+    "feedback": "The handwriting analysis shows that the letters 'A', 'B', 'R', 'O', and 'T' are exceptionally clear, with high stroke accuracy and consistency. Letters like 'Z' and 'X' fall behind due to less clarity and uniformity in their strokes. Overall, the message is legible, but slight improvements can be made in letters with diagonal strokes."
+}

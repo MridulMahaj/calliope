@@ -1,0 +1,45 @@
+{
+    "extracted text": "Included OTP API Key for Login in Message Central for the app.",
+    "scores": {
+        "I": 85,
+        "n": 80,
+        "c": 78,
+        "l": 82,
+        "u": 70,
+        "d": 88,
+        "e": 75,
+        "O": 90,
+        "T": 92,
+        "P": 89,
+        "A": 87,
+        "K": 76,
+        "y": 65,
+        "f": 72,
+        "o": 68,
+        "r": 77,
+        "L": 79,
+        "g": 67,
+        "i": 74,
+        "M": 86,
+        "s": 81,
+        "a": 71,
+        "h": 83,
+        "t": 84,
+        "p": 69
+    },
+    "top_5": [
+        "T",
+        "O",
+        "P",
+        "d",
+        "A"
+    ],
+    "bottom_5": [
+        "y",
+        "g",
+        "o",
+        "p",
+        "u"
+    ],
+    "feedback": "The handwriting is generally clear with some letters standing out more than others. The capital letters like 'T', 'O', and 'P' are particularly well-formed and consistent. However, some of the lowercase letters like 'y', 'g', and 'o' could be made clearer, as they tend to lose definition. Overall, there's a good level of uniformity in the slant and spacing, giving the text a neat appearance."
+}

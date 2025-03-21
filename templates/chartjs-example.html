@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Handwriting Analysis Visualization</title>
+</head>
+
+<body>
+    <h2>Handwriting Analysis - Letter Scores</h2>
+
+    <div style="height: 50vh; width: 50%;">
+        <canvas id="lineChart"></canvas>
+    </div>
+
+    <script>
+        const labels = {{ labels | tojson }};
+        const dataValues = {{ data | tojson }};
+
+        // Line Chart for Letter Scores
+        const lineData = {
+            labels: labels,
+            datasets: [{
+                label: 'Letter Scores',
+                backgroundColor: 'rgb(54, 162, 235)',
+                borderColor: 'rgb(54, 162, 235)',
+                data: dataValues,
+                fill: false,
+            }]
+        };
+
+        new Chart(document.getElementById('lineChart'), { type: 'line', data: lineData });
+    </script>
+</body>
+
+</html>

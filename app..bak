@@ -1,0 +1,926 @@
+import os
+import re
+import cv2
+import mysql.connector
+import numpy as np
+import openai
+import requests
+from flask import Flask, session, render_template
+from paddleocr import PaddleOCR
+from werkzeug.security import generate_password_hash
+from werkzeug.utils import secure_filename
+from mysql.connector import Error
+import random
+import json
+
+# Flask App Configuration
+app = Flask(__name__)
+UPLOAD_FOLDER = "./uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+#Upload folder config
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB Limit
+app.secret_key = "your_secret_key"
+
+# OpenAI API Key
+OPENAI_API_KEY = "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"
+openai.api_key = OPENAI_API_KEY
+
+# Initialize PaddleOCR
+ocr = PaddleOCR(use_angle_cls=True, lang="en", ocr_version="PP-OCRv4")
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
+# Check allowed file types
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg"}
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# Apply dilation to thicken fonts
+def thick_font(img):
+    image = cv2.bitwise_not(img)
+    kernel = np.ones((3, 3), np.uint8)
+    image = cv2.dilate(image, kernel, iterations=1)
+    dilated_image = cv2.bitwise_not(image)
+    return dilated_image
+
+# Apply sharpening filter
+def sharpen(img):
+    kernel = np.array([[0, -1, 0],
+                       [-1, 5, -1],
+                       [0, -1, 0]])
+    image_sharp = cv2.filter2D(src=img, ddepth=-1, kernel=kernel)
+    return image_sharp
+
+# Unsharp mask for better edge enhancement
+def unsharp_mask(image, kernel_size=(5, 5), sigma=1.0, amount=1.0, threshold=0):
+    blurred = cv2.GaussianBlur(image, kernel_size, sigma)
+    sharpened = float(amount + 1) * image - float(amount) * blurred
+    sharpened = np.clip(sharpened, 0, 255).astype(np.uint8)
+
+    if threshold > 0:
+        low_contrast_mask = np.absolute(image - blurred) < threshold
+        np.copyto(sharpened, image, where=low_contrast_mask)
+
+    return sharpened
+
+# Auto Canny Edge Detection
+def auto_canny(image, sigma=0.43):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    v = np.median(blurred)
+    lower = int(max(0, (1.0 - sigma) * v))
+    upper = int(min(255, (1.0 + sigma) * v))
+    edged = cv2.Canny(blurred, lower, upper)
+    return edged
+
+# Remove borders by detecting the largest contour
+def remove_borders(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    contours, _ = cv2.findContours(gray, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if not contours:
+        return img  # Return original image if no contours are found
+
+    largest_contour = max(contours, key=cv2.contourArea)
+    x, y, w, h = cv2.boundingRect(largest_contour)
+    cropped = img[y:y + h, x:x + w]
+
+    return cropped
+
+# Full preprocessing pipeline
+def preprocess_image(image_path):
+    img = cv2.imread(image_path)
+
+    if img is None:
+        raise ValueError(f"Could not open image file: {image_path}")
+
+    img = remove_borders(img)
+    img = sharpen(img)
+    img = thick_font(img)
+
+    preprocessed_path = os.path.splitext(image_path)[0] + "_preprocessed.png"
+    cv2.imwrite(preprocessed_path, img)
+
+    return preprocessed_path
+
+# Extract text and bounding boxes using PaddleOCR
+def extract_text_and_boxes(image_path):
+    preprocessed_path = preprocess_image(image_path)
+    result = ocr.ocr(preprocessed_path, cls=True)
+
+    extracted_text = ""
+    bounding_boxes = []
+
+    for line in result:
+        if line:
+            for word_info in line:
+                text, confidence = word_info[1]
+                box = word_info[0]
+                extracted_text += text + " "
+                bounding_boxes.append((box, text, confidence))
+
+    extracted_text = extracted_text.strip()
+    character_count = len(extracted_text.replace(" ", ""))
+    word_count = len(extracted_text.split())
+
+    return extracted_text, character_count, word_count, bounding_boxes
+
+# Draw bounding boxes around detected text
+def draw_text_boxes(image_path, bounding_boxes, output_path):
+    img = cv2.imread(image_path)
+
+    for box, text, confidence in bounding_boxes:
+        points = np.array(box, dtype=np.int32)
+        cv2.polylines(img, [points], isClosed=True, color=(0, 255, 0), thickness=2)
+        x, y = int(points[0][0]), int(points[0][1])
+        cv2.putText(img, text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+
+    cv2.imwrite(output_path, img)
+
+#Extract first JSON object from GPT-4o response
+def extract_first_json(text):
+    json_matches = re.findall(r'\{.*\}', text, re.DOTALL)
+    for match in json_matches:
+        try:
+            return json.loads(match)
+        except json.JSONDecodeError:
+            continue
+    return {"error": "No valid JSON found in GPT-4o response."}
+
+
+import json
+
+
+# Analyze handwriting using GPT-4o
+def analyze_handwriting(extracted_text, character_count, word_count):
+    if not extracted_text:
+        return {"error": "No text detected in the uploaded image."}
+
+    # Prompt engineering starts here
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a handwriting analysis expert."},
+                {"role": "user", "content": (
+                    f"The handwritten text is: \"{extracted_text}\". "
+                    "Analyze the handwriting quality of each letter (A-Z) based on stroke accuracy, consistency, and clarity. "
+                    "Provide scores (0-100) for each letter, where 0 means illegible and 100 means perfect. "
+                    "List the top 5 and worst 5 letters present in the image."
+                    "Return a JSON object in the following format:\n"
+                    "{\n"
+                    "  \"extracted_text\": extracted text,\n"
+                    "  \"scores\": {\"A\": 85, \"B\": 90, ...},\n"
+                    "  \"top_5\": [\"A\", \"B\", \"C\", \"D\", \"E\"],\n"
+                    "  \"bottom_5\": [\"X\", \"Y\", \"Z\", \"W\", \"V\"],\n"
+                    "  \"feedback\": \"Detailed feedback\"\n"
+                    "}"
+                )}
+            ],
+            max_tokens=500
+        )
+
+        raw_response = response.choices[0].message.content.strip()
+
+        # Parse JSON response safely
+        try:
+            analysis_result = json.loads(raw_response)
+        except json.JSONDecodeError:
+            return {"error": "Failed to parse GPT-4o response. Response was not valid JSON."}
+
+        # Add additional fields to the response
+        analysis_result["character_count"] = character_count
+        analysis_result["word_count"] = word_count
+
+        return analysis_result
+
+    except openai.OpenAIError as e:
+        return {"error": f"OpenAI API call failed: {str(e)}"}
+
+
+@app.route("/analyze_text", methods=["POST"])
+def analyze_text():
+    print("Received request for /analyze_text")  # Debug log
+
+    if "user_file" not in request.files:
+        print("Error: No file uploaded")  # Debug log
+        return jsonify({"error": "User file is required."}), 400
+
+    user_file = request.files["user_file"]
+    if not allowed_file(user_file.filename):
+        print(f"Invalid file type: {user_file.filename}")  # Debug log
+        return jsonify({"error": "Invalid file type. Allowed: png, jpg, jpeg."}), 400
+
+    filename = secure_filename(user_file.filename)
+    file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+
+    # Ensure UPLOAD_FOLDER exists
+    if not os.path.exists(app.config["UPLOAD_FOLDER"]):
+        os.makedirs(app.config["UPLOAD_FOLDER"])
+
+    user_file.save(file_path)
+    print(f"File saved to: {file_path}")  # Debug log
+
+    try:
+        extracted_text, char_count, word_count, bounding_boxes = extract_text_and_boxes(file_path)
+        print(f"Extracted text: {extracted_text}")  # Debug log
+
+        if not extracted_text:
+            return jsonify({"error": "No text detected in the uploaded image."}), 400
+
+        analysis_result = analyze_handwriting(extracted_text, char_count, word_count)
+        print(f"Analysis result: {analysis_result}")  # Debug log
+
+        highlighted_path = os.path.splitext(file_path)[0] + "_highlighted.jpg"
+        draw_text_boxes(file_path, bounding_boxes, highlighted_path)
+
+        # Save the analysis results as a JSON file
+        analysis_filename = os.path.splitext(filename)[0] + "_analysis_text.txt"
+        analysis_file_path = os.path.join(app.config["UPLOAD_FOLDER"], analysis_filename)
+
+        with open(analysis_file_path, "w") as json_file:
+            json.dump(analysis_result, json_file, indent=4)
+
+        return jsonify(analysis_result)
+
+    except Exception as e:
+        print(f"Error: {e}")  # Debug log
+        return jsonify({"error": str(e)}), 500
+
+#Handwriting Model finishes here
+# Done Text extraction using ML (PaddleOCR) and then analysis using OpenAI prompt engineering for returning of
+# extracted text, scores for letters present, top5 and bottom5 and feedback
+#This result is stored in the text file in format file_name_analysis_text.txt
+#I will return this back to user
+
+# Flask endpoint to send saved analysis JSON to frontend
+@app.route("/send_to_frontend", methods=["GET"])
+def send_to_frontend():
+    filename = request.args.get("filename")  # Get filename from query params
+    if not filename:
+        return jsonify({"error": "Filename is required."}), 400
+
+    file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+
+    if not os.path.exists(file_path):
+        return jsonify({"error": "File not found."}), 404
+
+    try:
+        with open(file_path, "r") as file:
+            return jsonify(json.load(file)), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+#Check if user is present in the database
+#If not return an error
+@app.route('/check_user', methods=['POST'])
+def check_if_user_exists():
+    if request.method == 'POST':
+        # Get JSON data from request
+        data = request.get_json()
+        mobile_number = data.get('mobile_number')
+
+        # Validate mobile number
+        if not mobile_number:
+            return jsonify({"status": "error", "message": "Mobile number is required"}), 400
+
+        # Establish a database connection
+        conn = get_db_connection()
+        if conn:
+            cursor = conn.cursor(buffered=True)  # Use buffered cursor to fetch all results immediately
+            try:
+                # Query to check if the mobile number exists
+                cursor.execute("SELECT * FROM user_registration WHERE mobile_number = %s", (mobile_number,))
+                user = cursor.fetchone()  # Fetch the result
+
+                # If user exists, return an "exists" message
+                if user:
+                    return jsonify({"status": "exists", "message": "Mobile number already registered"}), 200
+                else:
+                    return jsonify({"status": "not_found", "message": "Mobile number not found"}), 404
+
+            except Error as e:
+                print(f"Database error: {e}")
+                return jsonify({"status": "error", "message": "Database error"}), 500
+            finally:
+                cursor.close()
+                conn.close()
+        else:
+            return jsonify({"status": "error", "message": "Database connection failed"}), 500
+
+#Now for user login and registration + mobile number + otp
+def send_otp(mobile_number):
+    url = f"https://cpaas.messagecentral.com/verification/v3/send?countryCode=91&customerId=C-E414ED19519F4B5&flowType=SMS&mobileNumber={mobile_number}"
+
+    headers = {
+        'authToken': 'eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJDLUU0MTRFRDE5NTE5RjRCNSIsImlhdCI6MTczOTEwMzk0MSwiZXhwIjoxODk2NzgzOTQxfQ.SSkAmumOLsaCJrM9yuEy6D6rvy7t3vVErz--dZvUB0K41046nUqzhNraibvhHib5Wzfq-nks-UMawX80TL6CcA'
+    }
+
+    response = requests.post(url, headers=headers)
+
+    print(f"Sending OTP to {mobile_number}: {response.status_code}, Response: {response.text}")
+
+    if response.status_code == 200:
+        try:
+            response_data = response.json()
+
+            # The 'verificationId' is inside the 'data' object
+            data = response_data.get('data')
+            if data:
+                verification_id = data.get('verificationId')
+                if verification_id:
+                    return verification_id
+                else:
+                    print("Verification ID not found in 'data'.")
+                    return None
+            else:
+                print("No 'data' object in the response.")
+                return None
+        except ValueError:
+            print("Failed to parse JSON response.")
+            return None
+    else:
+        print(f"Failed to send OTP, status code: {response.status_code}")
+        return None
+
+# Route to handle mobile number submission and OTP sending
+@app.route('/submit_mobile', methods=['POST'])
+def submit_mobile():
+    data = request.get_json()  # Get the JSON data from the request
+    if not data or 'mobile_number' not in data:
+        return jsonify({"status": "error", "message": "Mobile number is required."}), 400
+
+    mobile_number = data['mobile_number']  # Extract the mobile number
+    print(f"Received mobile number: {mobile_number}")
+
+    # Validate mobile number
+    if not mobile_number or len(mobile_number) != 10 or not mobile_number.isdigit():
+        return jsonify({"status": "error", "message": "Invalid mobile number."}), 400
+
+    # Send the OTP and get verification ID
+    verification_id = send_otp(mobile_number)
+
+    if not verification_id:
+        return jsonify({"status": "error", "message": "Failed to send OTP."}), 500
+
+    # Store verification ID in the session
+    session['verification_id'] = verification_id
+    session['mobile_number'] = mobile_number  # Store mobile number as well
+
+    # Return a success response in JSON format
+    return jsonify({"status": "success", "message": "OTP sent successfully."}), 200
+
+
+# Route to handle OTP verification (verification_id is handled in the backend)
+@app.route('/verify_otp', methods=['POST'])
+def verify_otp():
+    mobile_number = session.get('mobile_number')  # Retrieve mobile number from session
+    verification_id = session.get('verification_id')  # Retrieve verification ID from session
+
+    if not mobile_number or not verification_id:
+        return jsonify({"status": "error", "message": "No mobile number or verification ID found in session."}), 400
+
+    # Get JSON data from the request (OTP sent by frontend)
+    data = request.get_json()
+    if not data or 'otp' not in data:
+        return jsonify({"status": "error", "message": "OTP is required."}), 400
+
+    otp = data['otp']  # Extract OTP from the request
+
+    # Check if mobile number exists in the database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT mobile_number FROM user_registration WHERE mobile_number = %s", (mobile_number,))
+    if cursor.fetchone():
+        cursor.close()
+        conn.close()
+        return jsonify({"status": "error", "message": "Mobile number already registered."}), 400  # Mobile number exists in DB
+
+    cursor.close()
+    conn.close()
+
+    # Validate the OTP using stored verification ID
+    otp_validation_response = validate_otp(mobile_number, verification_id, otp)
+
+    if otp_validation_response['status'] == "success":
+        return jsonify(otp_validation_response), 200
+    else:
+        return jsonify({"status": "error", "message": otp_validation_response.get("message", "Failed to verify OTP.")}), 400
+
+
+# Function to validate the OTP
+def validate_otp(mobile_number, verification_id, code):
+    url = f"https://cpaas.messagecentral.com/verification/v3/validateOtp?countryCode=91&mobileNumber={mobile_number}&verificationId={verification_id}&customerId=C-E414ED19519F4B5&code={code}"
+
+    headers = {
+        'authToken': 'eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJDLUU0MTRFRDE5NTE5RjRCNSIsImlhdCI6MTczOTEwMzk0MSwiZXhwIjoxODk2NzgzOTQxfQ.SSkAmumOLsaCJrM9yuEy6D6rvy7t3vVErz--dZvUB0K41046nUqzhNraibvhHib5Wzfq-nks-UMawX80TL6CcA'
+    }
+
+    response = requests.get(url, headers=headers)
+
+    print(f"Validating OTP for {mobile_number}: {response.status_code}, Response: {response.text}")
+
+    if response.status_code == 200:
+        return {"status": "success", "message": "OTP verified successfully!"}
+    else:
+        return {"status": "error", "message": response.json()}
+
+#For user registration and insertion into handwriting analysis table
+
+
+# User registration is based on only Mobile number and password
+#Since we have mobile number as primary key we will return the scores associated with that number back to the user
+#That means only 1 account per user based on mobile
+# MySQL connection configuration
+db_config = {
+    'host': '127.0.0.1',
+    'user': 'root',
+    'password': 'mridul1608',
+    'database': 'CALLIOPE'
+}
+
+# Establish MySQL Connection
+def get_db_connection():
+    return mysql.connector.connect(**db_config)
+
+@app.route("/register_user", methods=["POST"])
+def register_user():
+    try:
+        data = request.json
+        mobile_number = data.get("mobile_number")
+        password = data.get("password")
+
+        if not mobile_number or not password:
+            return jsonify({"error": "Mobile number and password are required."}), 400
+
+        hashed_password = generate_password_hash(password)  # Hash the password
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        query = "INSERT INTO user_registration (mobile_number, password) VALUES (%s, %s)"
+        cursor.execute(query, (mobile_number, hashed_password))
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({"message": "User registered successfully."}), 201
+
+    except mysql.connector.IntegrityError:
+        return jsonify({"error": "Mobile number already exists."}), 409
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/store_handwriting_analysis", methods=["POST"])
+def store_handwriting_analysis():
+    try:
+        data = request.json
+        user_mobile = data.get("user_mobile")
+        extracted_text = data.get("extracted_text")
+        scores = data.get("scores")
+        top_5 = data.get("top_5")
+        bottom_5 = data.get("bottom_5")
+        character_count = data.get("character_count")
+        word_count = data.get("word_count")
+        feedback = data.get("feedback")
+
+        if not all([user_mobile, extracted_text, scores, top_5, bottom_5, character_count, word_count, feedback]):
+            return jsonify({"error": "All fields are required."}), 400
+
+        # Convert JSON objects to strings for database storage
+        scores_json = json.dumps(scores)
+        top_5_json = json.dumps(top_5)
+        bottom_5_json = json.dumps(bottom_5)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Check if user exists
+        cursor.execute("SELECT mobile_number FROM user_registration WHERE mobile_number = %s", (user_mobile,))
+        if cursor.fetchone() is None:
+            return jsonify({"error": "User does not exist."}), 404
+
+        # Insert analysis data
+        query = """
+        INSERT INTO handwriting_analysis (user_mobile, extracted_text, scores, top_5, bottom_5, character_count, word_count, feedback)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(query, (user_mobile, extracted_text, scores_json, top_5_json, bottom_5_json, character_count, word_count, feedback))
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({"message": "Handwriting analysis stored successfully."}), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# Strip Markdown Code Blocks
+def strip_code_blocks(response_text):
+    if response_text.startswith("```json") and response_text.endswith("```"):
+        return response_text[7:-3].strip()
+    return response_text
+
+
+# Generate Questions using OpenAI
+def generate_questions(language, segment_name):
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "user", "content": (
+                    f"You are an expert language tutor creating multiple-choice questions for {language} learners. "
+                    f"Generate exactly 20 multiple-choice questions for the segment '{segment_name}'. "
+                    f"The question_text must be in ENGLISH only"
+                    "Each question must be structured as follows:\n"
+                    "- 'question_text': A meaningful language learning question.\n"
+                    "- 'correct_answer': The correct answer.\n"
+                    "- 'wrong_answers': A list of exactly 3 unique incorrect but plausible answers.\n"
+                    "Return ONLY a valid JSON array with 20 questions, nothing else."
+                )}
+            ],
+            max_tokens=2000
+        )
+
+        response_content = response.choices[0].message.content.strip()
+        response_content = strip_code_blocks(response_content)
+
+        questions = json.loads(response_content)
+
+        if not isinstance(questions, list) or len(questions) != 20:
+            raise ValueError("OpenAI did not return exactly 20 questions.")
+
+        for q in questions:
+            if not q.get("question_text") or not q.get("correct_answer") or not q.get("wrong_answers"):
+                raise ValueError("One or more questions have missing fields.")
+            if not isinstance(q["wrong_answers"], list) or len(q["wrong_answers"]) != 3:
+                raise ValueError("Each question must have exactly 3 wrong answers.")
+
+        return questions
+    except openai.OpenAIError as e:
+        return {"error": f"OpenAI API error: {str(e)}"}
+    except ValueError as ve:
+        return {"error": str(ve)}
+    except Exception as e:
+        return {"error": f"Unexpected error: {str(e)}"}
+
+
+# API to Generate & Store Questions
+@app.route("/generate_questions", methods=["POST"])
+def generate_questions_for_chapter():
+    data = request.get_json()
+    language = data.get("language")
+    chapter_number = data.get("chapter_number")
+    segment_name = data.get("segment_name")
+
+    if language not in ["French", "German", "Spanish", "Tamil", "Malayalam"]:
+        return jsonify({"error": "Invalid language."}), 400
+
+    segment_mapping = {
+        1: ["Introduction", "Numbers and Days", "Basic Sentences"],
+        2: ["Colors, Shapes & Sizes", "Personality & Emotions", "Talking About Places"],
+        3: ["In a Restaurant & Café", "At the Airport & Hotel", "Public Transport & Directions"],
+        4: ["Agreeing & Disagreeing", "Giving Reasons & Justifications", "Talking About Hobbies & Interests"]
+    }
+
+    if chapter_number not in segment_mapping or segment_name not in segment_mapping[chapter_number]:
+        return jsonify({"error": f"Invalid segment for Chapter {chapter_number}."}), 400
+
+    segment_number = segment_mapping[chapter_number].index(segment_name) + 1
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        questions = generate_questions(language, segment_name)
+        if "error" in questions:
+            return jsonify({"error": questions["error"]}), 500
+
+        for q in questions:
+            cursor.execute(
+                f"SELECT COUNT(*) FROM {language} WHERE chapter_number = %s AND segment_number = %s AND question_text = %s",
+                (chapter_number, segment_number, q["question_text"])
+            )
+            if cursor.fetchone()[0] == 0:
+                cursor.execute(
+                    f"INSERT INTO {language} (chapter_number, segment_number, segment_name, question_text, correct_answer, wrong_answers) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    (chapter_number, segment_number, segment_name, q["question_text"], q["correct_answer"],
+                     json.dumps(q["wrong_answers"]))
+                )
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify(
+            {"message": f"Questions stored for {language} - {segment_name} (Chapter {chapter_number})."}), 201
+
+    except mysql.connector.Error as db_err:
+        conn.rollback()
+        return jsonify({"error": f"Database error: {str(db_err)}"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# API to Retrieve 10 Random Questions
+@app.route("/get_questions", methods=["POST"])
+def get_questions():
+    try:
+        data = request.get_json()
+        language = data.get("language")
+        chapter_number = data.get("chapter_number")
+        segment_name = data.get("segment_name")
+
+        if language not in ["French", "German", "Spanish"]:
+            return jsonify({"error": "Invalid language."}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute(
+            f"SELECT id, question_text, correct_answer, wrong_answers FROM {language} "
+            "WHERE chapter_number = %s AND segment_name = %s",
+            (chapter_number, segment_name)
+        )
+
+        questions = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        for q in questions:
+            try:
+                q["wrong_answers"] = json.loads(q["wrong_answers"])
+            except json.JSONDecodeError:
+                q["wrong_answers"] = []
+
+        random.shuffle(questions)
+        return jsonify({"questions": questions[:10]})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+#To do - Translate, Writing, Speaking, Dictionary
+from flask import Flask, request, jsonify
+from deep_translator import GoogleTranslator
+
+@app.route('/translate', methods=['POST'])
+def translate_text():
+    data = request.get_json()
+    if not data or 'text' not in data:
+        return jsonify({"error": "No text provided"}), 400
+
+    text = data['text']
+    translations = {}
+
+    target_languages = {
+        "French": "fr",
+        "Italian": "it",
+        "Spanish": "es",
+        "Portuguese": "pt",
+        "Romanian": "ro",
+        "German": "de",
+        "Dutch": "nl",
+        "Swedish": "sv",
+        "Norwegian": "no",
+        "Danish": "da",
+        "Finnish": "fi",
+        "Polish": "pl",
+        "Hungarian": "hu",
+        "Czech": "cs",
+        "Slovak": "sk"
+    }
+
+    for lang_name, lang_code in target_languages.items():
+        try:
+            translated_text = GoogleTranslator(source="en", target=lang_code).translate(text)
+            translations[lang_name] = translated_text
+        except Exception as e:
+            translations[lang_name] = f"Error: {str(e)}"
+
+    return jsonify({
+        "original_text": text,
+        "translations": translations
+    })
+
+#Translation for latin based languages fixed and completed
+#Now, will start speech recognition using Speech Recognition Library
+from flask import Flask, jsonify, request
+import speech_recognition as sr
+import openai
+import json
+import time
+import os
+
+# Store the last transcribed text globally
+last_transcription = {"text": None}
+
+#Record audio from user's microphone
+def record_audio():
+    recognizer = sr.Recognizer()
+    filename = f"recorded_{int(time.time())}.wav"  # Generate unique filename
+
+    with sr.Microphone() as source:
+        print("Listening... Speak now.")
+        recognizer.adjust_for_ambient_noise(source)
+
+        try:
+            audio = recognizer.listen(source, timeout=5)
+            print("Processing...")
+
+            with open(filename, "wb") as f:
+                f.write(audio.get_wav_data())
+
+            return filename
+
+        except sr.WaitTimeoutError:
+            return None
+
+#Record the speech route
+@app.route('/record_speech', methods=['GET'])
+def record_speech():
+    recorded_file = record_audio()
+
+    if recorded_file:
+        return jsonify({"success": True, "message": "Audio recorded successfully", "file": recorded_file})
+    else:
+        return jsonify({"success": False, "error": "No speech detected within timeout."})
+
+
+#Route to check and see the text recognized from the .wav file
+#Do not send to frontend, only for backend
+@app.route('/transcribe_audio', methods=['POST'])
+def transcribe_audio():
+    global last_transcription  # Ensure global variable is modified
+
+    data = request.get_json()
+    if not data or 'file' not in data:
+        return jsonify({"error": "No audio file specified"}), 400
+
+    audio_file = data['file']
+    recognizer = sr.Recognizer()
+
+    try:
+        with sr.AudioFile(audio_file) as source:
+            audio = recognizer.record(source)
+
+        text = recognizer.recognize_google(audio)
+
+        # Debugging print statements
+        print(f" Transcribed Text: {text}")
+
+        # Ensure transcription is stored
+        last_transcription["text"] = text
+        print(f" Updated Last Transcription: {last_transcription['text']}")
+
+        return jsonify({"success": True, "transcribed_text": text})
+
+    except sr.UnknownValueError:
+        return jsonify({"success": False, "error": "Could not understand the audio."})
+    except sr.RequestError:
+        return jsonify({"success": False, "error": "Could not request results, check internet connection."})
+    except FileNotFoundError:
+        return jsonify({"success": False, "error": "Audio file not found."})
+
+#analyze speech from .wav file
+@app.route('/analyze_speech', methods=['POST'])
+def analyze_speech():
+    global last_transcription
+
+    # Debugging print statement
+    print(f" Last Stored Transcription: {last_transcription['text']}")
+
+    if not last_transcription["text"]:
+        return jsonify({"error": "No transcribed text available. Please record and transcribe first."}), 400
+
+    transcribed_text = last_transcription["text"]
+
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": (
+                    "You are a language learning assistant. "
+                    "Analyze the spoken sentence for pronunciation, grammar, and fluency. "
+                    "Return the feedback in valid JSON format with no extra text."
+                )},
+                {"role": "user", "content": (
+                    f"Analyze this spoken sentence: \"{transcribed_text}\".\n"
+                    "Provide structured feedback in this JSON format:\n"
+                    "{\n"
+                    "  'pronunciation': 'string',\n"
+                    "  'grammar': 'string',\n"
+                    "  'fluency': 'string'\n"
+                    "}"
+                )}
+            ],
+            max_tokens=500
+        )
+
+        response_content = response.choices[0].message.content.strip()
+        if response_content.startswith("```json") and response_content.endswith("```"):
+            response_content = response_content[7:-3].strip()
+
+        feedback = json.loads(response_content)
+
+        if not all(key in feedback for key in ["pronunciation", "grammar", "fluency"]):
+            raise ValueError("Missing required keys in OpenAI response.")
+
+        return jsonify({"success": True, "text": transcribed_text, "analysis": feedback})
+
+    except openai.OpenAIError as e:
+        return jsonify({"error": f"OpenAI API error: {str(e)}"})
+    except ValueError as ve:
+        return jsonify({"error": str(ve)})
+    except Exception as e:
+        return jsonify({"error": f"Unexpected error: {str(e)}"})
+
+
+#Dictionary
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+import json
+import openai
+
+
+def generate_dictionary(language):
+    prompt = f"""
+    Generate a JSON-formatted dictionary containing 10 common words in {language}.
+    Each entry should follow this structure:
+
+    - "word": The word itself
+    - "meaning": A brief definition
+    - "synonyms": A list of exactly 3 synonyms
+    - "antonyms": A list of exactly 3 antonyms (or an empty list if none apply)
+
+    Ensure the JSON output is in **this exact order**:
+    1. word
+    2. meaning
+    3. synonyms
+    4. antonyms
+
+    Example output:
+    {{
+        "words": [
+            {{
+                "word": "Bonjour",
+                "meaning": "A common French greeting meaning 'Hello'.",
+                "synonyms": ["Salut", "Coucou", "Allô"],
+                "antonyms": ["Adieu", "Au revoir", "Bonne nuit"]
+            }}
+        ]
+    }}
+    """
+
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a helpful language learning assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=700
+        )
+
+        content = response.choices[0].message.content.strip()
+
+        #Clean up unwanted formatting (` ```json ` and ` ``` `)
+        content = content.replace("```json", "").replace("```", "").strip()
+
+        #Parse JSON output safely
+        dictionary = json.loads(content)
+
+        #Validate correct format
+        if "words" not in dictionary or not isinstance(dictionary["words"], list):
+            return {"error": "Invalid API response format. 'words' key missing or not a list."}
+
+        return dictionary
+
+    except json.JSONDecodeError:
+        return {"error": "Failed to parse GPT response. Check API output format."}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# Flask Endpoints for testing app
+
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({"message" : "Hello from calliope"}),200
+@app.route("/test", methods=["GET"])
+def home_test():
+    return jsonify({"message": "Flask app is running bro!"}), 200
+
+@app.route('/testtest',methods=['POST'])
+def testtest():
+    return render_template()
+
+if __name__ == '__main__':
+    app.run(debug=True)
+

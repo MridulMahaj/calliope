@@ -1,0 +1,45 @@
+{
+    "extracted text": "-> Included OTP API Key for in Message Central for the app.",
+    "scores": {
+        "I": 90,
+        "n": 85,
+        "c": 80,
+        "l": 90,
+        "u": 75,
+        "d": 70,
+        "e": 85,
+        "O": 90,
+        "T": 88,
+        "P": 87,
+        "A": 85,
+        "K": 88,
+        "y": 80,
+        "f": 78,
+        "o": 82,
+        "r": 84,
+        "i": 88,
+        "M": 85,
+        "s": 83,
+        "g": 77,
+        "C": 88,
+        "t": 86,
+        "h": 82,
+        "a": 84,
+        "p": 87
+    },
+    "top_5": [
+        "I",
+        "l",
+        "O",
+        "T",
+        "K"
+    ],
+    "bottom_5": [
+        "d",
+        "u",
+        "g",
+        "f",
+        "y"
+    ],
+    "feedback": "The handwriting is generally clear with well-formed letters. 'I', 'l', and 'O' are especially clear and consistent. The letters 'd', 'u', 'g', and 'f' show irregularities in strokes that affect their readability. Improving the uniformity of these letters might enhance overall legibility."
+}

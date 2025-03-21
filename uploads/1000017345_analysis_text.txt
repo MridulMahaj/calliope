@@ -1,0 +1,37 @@
+{
+    "extracted text": "Welcome to History Literature Festival 2025",
+    "scores": {
+        "W": 95,
+        "e": 88,
+        "l": 90,
+        "c": 87,
+        "o": 89,
+        "m": 90,
+        "t": 85,
+        "H": 92,
+        "i": 86,
+        "s": 84,
+        "r": 87,
+        "y": 86,
+        "L": 93,
+        "a": 88,
+        "u": 89,
+        "F": 91,
+        "v": 88
+    },
+    "top_5": [
+        "W",
+        "L",
+        "H",
+        "F",
+        "m"
+    ],
+    "bottom_5": [
+        "s",
+        "t",
+        "i",
+        "y",
+        "c"
+    ],
+    "feedback": "The handwriting in the image is overall very legible with clear strokes. 'W', 'L', and 'H' stand out with their excellent clarity and balance. Letters such as 's', 't', and 'i' could use slight improvement for consistency across the text."
+}

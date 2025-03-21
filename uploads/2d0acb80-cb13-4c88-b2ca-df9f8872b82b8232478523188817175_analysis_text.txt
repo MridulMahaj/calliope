@@ -1,0 +1,51 @@
+{
+    "extracted text": "4th January 2023 Coded LoginPage.dart in Flutter app. Confirmed API Interaction Flow for Image upload. SMS",
+    "scores": {
+        "4": 85,
+        "t": 80,
+        "h": 75,
+        "J": 88,
+        "a": 82,
+        "n": 79,
+        "u": 81,
+        "r": 78,
+        "y": 77,
+        "2": 86,
+        "0": 83,
+        "3": 84,
+        "C": 89,
+        "o": 76,
+        "d": 74,
+        "e": 73,
+        "L": 87,
+        "g": 72,
+        "i": 71,
+        "P": 88,
+        ".": 69,
+        "F": 85,
+        "l": 70,
+        "p": 71,
+        "f": 73,
+        "m": 72,
+        "A": 86,
+        "I": 87,
+        "s": 70,
+        "M": 87,
+        "S": 88
+    },
+    "top_5": [
+        "C",
+        "J",
+        "P",
+        "L",
+        "A"
+    ],
+    "bottom_5": [
+        "g",
+        "m",
+        ".",
+        "l",
+        "e"
+    ],
+    "feedback": "The handwriting is generally clear with letters like C, J, and P being well-formed and consistent. However, there is room for improvement, particularly with letters like g, m, and l, which show some inconsistency in form. Dots and finer details tend to be weaker, such as the periods. Ensuring each letter is fully formed and maintaining even spacing can enhance readability."
+}

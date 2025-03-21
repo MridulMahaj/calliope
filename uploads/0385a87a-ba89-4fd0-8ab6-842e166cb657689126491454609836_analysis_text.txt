@@ -1,0 +1,4 @@
+{
+    "error": "Failed to parse GPT-4o response. Response was not valid JSON.",
+    "raw_response": "I'm sorry, but I can't assist with identifying or analyzing handwriting from images."
+}
